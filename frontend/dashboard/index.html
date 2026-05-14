@@ -555,8 +555,8 @@ canvas{
             <div class="card">
 
                 <p>Critical Alarms</p>
-                <h2 style="color:var(--red);">
-                    3
+                <h2 style="color:var(--red);" id="val-critical">
+                    -
                 </h2>
 
             </div>
@@ -564,8 +564,8 @@ canvas{
             <div class="card">
 
                 <p>Warnings</p>
-                <h2 style="color:var(--orange);">
-                    4
+                <h2 style="color:var(--orange);" id="val-warnings">
+                    -
                 </h2>
 
             </div>
@@ -573,8 +573,8 @@ canvas{
             <div class="card">
 
                 <p>System Health</p>
-                <h2 style="color:var(--green);">
-                    89%
+                <h2 style="color:var(--green);" id="val-health">
+                    -
                 </h2>
 
             </div>
@@ -582,8 +582,8 @@ canvas{
             <div class="card">
 
                 <p>AI Confidence</p>
-                <h2 style="color:var(--blue);">
-                    94%
+                <h2 style="color:var(--blue);" id="val-confidence">
+                    -
                 </h2>
 
             </div>
@@ -636,22 +636,14 @@ canvas{
 
                 <!-- TIMELINE -->
 
-                <div class="panel timeline">
+                <div class="panel timeline" id="timeline-container">
 
                     <h3>
                         Alarm Timeline
                     </h3>
 
                     <div class="event">
-                        Valve blockage detected
-                    </div>
-
-                    <div class="event">
-                        Pressure drop warning
-                    </div>
-
-                    <div class="event">
-                        AI grouped alarms
+                        Loading alerts...
                     </div>
 
                 </div>
@@ -670,36 +662,11 @@ canvas{
                         AI Assistant
                     </h3>
 
-                    <div class="ai-box">
-
-                        <h4>
-                            Root Cause
-                        </h4>
-
-                        Valve blockage causing
-                        pressure drop and overheating.
-
-                    </div>
-
-                    <div class="ai-box">
-
-                        <h4>
-                            Predictive Alert
-                        </h4>
-
-                        Failure likely within
-                        8 minutes.
-
-                    </div>
-
-                    <div class="ai-box">
-
-                        <h4>
-                            Suggested Action
-                        </h4>
-
-                        Inspect Valve 4 immediately.
-
+                    <div id="ai-suggestions-container">
+                        <div class="ai-box">
+                            <h4>Loading AI Insights...</h4>
+                            Please wait.
+                        </div>
                     </div>
 
                     <div class="chat">
@@ -802,21 +769,83 @@ new Chart(ctx,{
 
 /* LIVE UPDATE */
 
-setInterval(()=>{
+const API_BASE = "http://localhost:5000/api";
 
-    const value =
-    Math.floor(Math.random()*20)+60;
+function fetchDashboardData() {
+    fetch(`${API_BASE}/dashboard-summary`)
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("val-critical").innerText = data.alerts.critical;
+        document.getElementById("val-warnings").innerText = data.sensors.warning;
+        document.getElementById("val-health").innerText = data.health_score + "%";
+        document.getElementById("val-confidence").innerText = "94%";
+    })
+    .catch(err => console.log(err));
 
-    dataValues.push(value);
+    fetch(`${API_BASE}/sensors`)
+    .then(res => res.json())
+    .then(data => {
+        let pumpTemp = data.sensors.find(s => s.type === "temperature");
+        let pumpPress = data.sensors.find(s => s.type === "pressure");
+        
+        if (pumpTemp) {
+            document.getElementById("temp").innerText = pumpTemp.value + " " + pumpTemp.unit;
+            dataValues.push(pumpTemp.value);
+            dataValues.shift();
+            chart.update();
+        }
+        if (pumpPress) {
+            document.getElementById("pressure").innerText = pumpPress.value + " " + pumpPress.unit;
+        }
+    })
+    .catch(err => console.log(err));
 
-    dataValues.shift();
+    fetch(`${API_BASE}/alerts`)
+    .then(res => res.json())
+    .then(data => {
+        const container = document.getElementById("timeline-container");
+        let html = "<h3>Alarm Timeline</h3>";
+        if (data.alerts && data.alerts.length > 0) {
+            data.alerts.slice(0, 5).forEach(alert => {
+                let border = alert.severity === 'critical' ? 'var(--red)' : 'var(--orange)';
+                let bg = alert.severity === 'critical' ? 'rgba(231,76,60,0.1)' : 'rgba(243,156,18,0.1)';
+                html += `<div class="event" style="border-left-color:${border}; background:${bg}">
+                    <strong>${alert.zone}</strong>: ${alert.title}
+                </div>`;
+            });
+        } else {
+            html += `<div class="event" style="border-left-color:var(--green); background:rgba(46,204,113,0.1)">All systems normal</div>`;
+        }
+        container.innerHTML = html;
+    })
+    .catch(err => console.log(err));
 
-    chart.update();
+    fetch(`${API_BASE}/ai-suggestions`)
+    .then(res => res.json())
+    .then(data => {
+        const container = document.getElementById("ai-suggestions-container");
+        let html = "";
+        if (data.ai_suggestions && data.ai_suggestions.length > 0) {
+            data.ai_suggestions.slice(0, 3).forEach(sugg => {
+                html += `
+                    <div class="ai-box">
+                        <h4>${sugg.icon} ${sugg.category}</h4>
+                        ${sugg.suggestion}
+                    </div>
+                `;
+            });
+        } else {
+            html += `<div class="ai-box"><h4>All Good</h4>No actions required.</div>`;
+        }
+        container.innerHTML = html;
+    })
+    .catch(err => console.log(err));
+}
 
-    document.getElementById("temp").innerHTML =
-    value + "°C";
+// Initial fetch
+fetchDashboardData();
 
-},2000);
+setInterval(fetchDashboardData, 2000);
 
 /* SYSTEM CHANGE */
 
